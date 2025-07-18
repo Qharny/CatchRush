@@ -1,8 +1,94 @@
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:math';
 import 'dart:async';
 
-void main() {
+// Hive data models
+part 'main.g.dart';
+
+@HiveType(typeId: 0)
+class GameScore extends HiveObject {
+  @HiveField(0)
+  int score;
+
+  @HiveField(1)
+  DateTime date;
+
+  @HiveField(2)
+  int level;
+
+  GameScore({required this.score, required this.date, required this.level});
+}
+
+@HiveType(typeId: 1)
+class UserData extends HiveObject {
+  @HiveField(0)
+  String playerName;
+
+  @HiveField(1)
+  int highScore;
+
+  @HiveField(2)
+  int totalGamesPlayed;
+
+  @HiveField(3)
+  int totalScore;
+
+  @HiveField(4)
+  DateTime lastPlayDate;
+
+  @HiveField(5)
+  List<String> achievements;
+
+  UserData({
+    required this.playerName,
+    required this.highScore,
+    required this.totalGamesPlayed,
+    required this.totalScore,
+    required this.lastPlayDate,
+    required this.achievements,
+  });
+}
+
+@HiveType(typeId: 2)
+class GameSettings extends HiveObject {
+  @HiveField(0)
+  bool soundEnabled;
+
+  @HiveField(1)
+  bool vibrationEnabled;
+
+  @HiveField(2)
+  double gameSpeed;
+
+  @HiveField(3)
+  String theme;
+
+  GameSettings({
+    required this.soundEnabled,
+    required this.vibrationEnabled,
+    required this.gameSpeed,
+    required this.theme,
+  });
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Hive
+  await Hive.initFlutter();
+
+  // Register adapters
+  Hive.registerAdapter(GameScoreAdapter());
+  Hive.registerAdapter(UserDataAdapter());
+  Hive.registerAdapter(GameSettingsAdapter());
+
+  // Open boxes
+  await Hive.openBox<GameScore>('scores');
+  await Hive.openBox<UserData>('userData');
+  await Hive.openBox<GameSettings>('settings');
+  await Hive.openBox('cache');
+
   runApp(MyApp());
 }
 
@@ -33,11 +119,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late AnimationController _gameController;
   late Timer _gameTimer;
 
+  // Hive boxes
+  late Box<GameScore> scoresBox;
+  late Box<UserData> userDataBox;
+  late Box<GameSettings> settingsBox;
+  late Box cacheBox;
+
   // Game state
   int score = 0;
   int lives = 3;
   bool gameActive = false;
   bool gameOver = false;
+  int level = 1;
+
+  // User data
+  UserData? currentUser;
+  GameSettings? gameSettings;
 
   // Screen dimensions
   double screenWidth = 0;
@@ -56,12 +153,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   bool objectActive = false;
 
   // Game settings
-  final double objectSpeed = 200; // pixels per second
+  double objectSpeed = 200; // pixels per second
   final Random random = Random();
 
   @override
   void initState() {
     super.initState();
+    _initializeHive();
     _gameController = AnimationController(
       duration: Duration(seconds: 1),
       vsync: this,
@@ -73,6 +171,44 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     });
   }
 
+  void _initializeHive() {
+    scoresBox = Hive.box<GameScore>('scores');
+    userDataBox = Hive.box<UserData>('userData');
+    settingsBox = Hive.box<GameSettings>('settings');
+    cacheBox = Hive.box('cache');
+
+    // Load or create user data
+    if (userDataBox.isEmpty) {
+      currentUser = UserData(
+        playerName: 'Player 1',
+        highScore: 0,
+        totalGamesPlayed: 0,
+        totalScore: 0,
+        lastPlayDate: DateTime.now(),
+        achievements: [],
+      );
+      userDataBox.put('current_user', currentUser!);
+    } else {
+      currentUser = userDataBox.get('current_user');
+    }
+
+    // Load or create settings
+    if (settingsBox.isEmpty) {
+      gameSettings = GameSettings(
+        soundEnabled: true,
+        vibrationEnabled: true,
+        gameSpeed: 1.0,
+        theme: 'default',
+      );
+      settingsBox.put('game_settings', gameSettings!);
+    } else {
+      gameSettings = settingsBox.get('game_settings');
+    }
+
+    // Apply settings
+    objectSpeed = 200 * gameSettings!.gameSpeed;
+  }
+
   void _initializeGame() {
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     screenWidth = renderBox.size.width;
@@ -82,6 +218,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     basketX = screenWidth / 2 - basketWidth / 2;
     basketY = screenHeight - basketHeight - 100;
 
+    // Cache screen dimensions
+    cacheBox.put('screen_width', screenWidth);
+    cacheBox.put('screen_height', screenHeight);
+    cacheBox.put('last_session', DateTime.now().toIso8601String());
+
     setState(() {});
   }
 
@@ -89,6 +230,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     setState(() {
       score = 0;
       lives = 3;
+      level = 1;
       gameActive = true;
       gameOver = false;
       objectActive = false;
@@ -110,8 +252,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     if (!objectActive) return;
 
     setState(() {
-      // Move object down
-      objectY += objectSpeed * 0.016; // 16ms frame time
+      // Move object down (speed increases with level)
+      double currentSpeed = objectSpeed * (1 + (level - 1) * 0.2);
+      objectY += currentSpeed * 0.016; // 16ms frame time
 
       // Check if object reached bottom
       if (objectY > screenHeight) {
@@ -137,6 +280,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     setState(() {
       score++;
       objectActive = false;
+
+      // Level up every 10 points
+      if (score % 10 == 0) {
+        level++;
+        _checkAchievements();
+      }
     });
 
     // Spawn new object after short delay
@@ -156,6 +305,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         gameOver = true;
         gameActive = false;
         _gameTimer.cancel();
+        _saveGameData();
       }
     });
 
@@ -166,6 +316,72 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           _spawnNewObject();
         }
       });
+    }
+  }
+
+  void _saveGameData() {
+    // Save current game score
+    final gameScore = GameScore(
+      score: score,
+      date: DateTime.now(),
+      level: level,
+    );
+    scoresBox.add(gameScore);
+
+    // Update user data
+    if (currentUser != null) {
+      currentUser!.totalGamesPlayed++;
+      currentUser!.totalScore += score;
+      currentUser!.lastPlayDate = DateTime.now();
+
+      if (score > currentUser!.highScore) {
+        currentUser!.highScore = score;
+        _addAchievement('New High Score!');
+      }
+
+      currentUser!.save();
+    }
+
+    // Keep only last 50 scores to prevent excessive storage
+    if (scoresBox.length > 50) {
+      final oldestKey = scoresBox.keys.first;
+      scoresBox.delete(oldestKey);
+    }
+  }
+
+  void _checkAchievements() {
+    List<String> newAchievements = [];
+
+    if (level == 5 && !currentUser!.achievements.contains('Level 5 Reached')) {
+      newAchievements.add('Level 5 Reached');
+    }
+
+    if (score >= 25 && !currentUser!.achievements.contains('Score Master')) {
+      newAchievements.add('Score Master');
+    }
+
+    if (currentUser!.totalGamesPlayed >= 10 && !currentUser!.achievements.contains('Persistent Player')) {
+      newAchievements.add('Persistent Player');
+    }
+
+    for (String achievement in newAchievements) {
+      _addAchievement(achievement);
+    }
+  }
+
+  void _addAchievement(String achievement) {
+    if (currentUser != null && !currentUser!.achievements.contains(achievement)) {
+      currentUser!.achievements.add(achievement);
+      currentUser!.save();
+
+      // Show achievement notification
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🏆 Achievement Unlocked: $achievement'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -195,6 +411,75 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     if (gameActive) {
       _moveBasket(details.delta.dx);
     }
+  }
+
+  void _showStats() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Game Statistics'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Player: ${currentUser?.playerName ?? 'Unknown'}'),
+            Text('High Score: ${currentUser?.highScore ?? 0}'),
+            Text('Total Games: ${currentUser?.totalGamesPlayed ?? 0}'),
+            Text('Total Score: ${currentUser?.totalScore ?? 0}'),
+            SizedBox(height: 16),
+            Text('Recent Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Container(
+              height: 100,
+              child: ListView.builder(
+                itemCount: scoresBox.length > 5 ? 5 : scoresBox.length,
+                itemBuilder: (context, index) {
+                  final scores = scoresBox.values.toList().reversed.toList();
+                  final gameScore = scores[index];
+                  return Text('${gameScore.score} points - Level ${gameScore.level}');
+                },
+              ),
+            ),
+            SizedBox(height: 16),
+            Text('Achievements:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...currentUser?.achievements.map((achievement) => Text('🏆 $achievement')) ?? [],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _clearData() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Clear All Data'),
+        content: Text('Are you sure you want to clear all game data? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              scoresBox.clear();
+              currentUser?.delete();
+              cacheBox.clear();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('All data cleared!')),
+              );
+            },
+            child: Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -243,13 +528,24 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             ),
                           ],
                         ),
-                        child: Text(
-                          'Score: $score',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade800,
-                          ),
+                        child: Column(
+                          children: [
+                            Text(
+                              'Score: $score',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                            Text(
+                              'Level: $level',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue.shade600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Container(
@@ -270,7 +566,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             Text(
                               'Lives: ',
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.blue.shade800,
                               ),
@@ -280,13 +576,49 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   (index) => Icon(
                                 Icons.favorite,
                                 color: index < lives ? Colors.red : Colors.grey.shade300,
-                                size: 20,
+                                size: 18,
                               ),
                             ),
                           ],
                         ),
                       ),
                     ],
+                  ),
+                ),
+
+                // High Score Display
+                Positioned(
+                  top: 80,
+                  left: 20,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.amber.shade300),
+                    ),
+                    child: Text(
+                      'High Score: ${currentUser?.highScore ?? 0}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber.shade800,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Menu Button
+                Positioned(
+                  top: 20,
+                  right: 20,
+                  child: IconButton(
+                    onPressed: _showStats,
+                    icon: Icon(Icons.menu, color: Colors.white),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.blue.shade600,
+                      shape: CircleBorder(),
+                    ),
                   ),
                 ),
 
@@ -437,7 +769,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                               textAlign: TextAlign.center,
                             ),
                             SizedBox(height: 16),
-                            if (gameOver)
+                            if (gameOver) ...[
                               Text(
                                 'Final Score: $score',
                                 style: TextStyle(
@@ -445,6 +777,23 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   color: Colors.blue.shade600,
                                 ),
                               ),
+                              Text(
+                                'Level Reached: $level',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.blue.shade500,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'High Score: ${currentUser?.highScore ?? 0}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.amber.shade700,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                             SizedBox(height: 24),
                             Text(
                               gameOver ? 'Tap to play again' : 'Swipe or use buttons to move the basket',
@@ -455,19 +804,47 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                               textAlign: TextAlign.center,
                             ),
                             SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: _startGame,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue.shade600,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                ElevatedButton(
+                                  onPressed: _startGame,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue.shade600,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    gameOver ? 'Play Again' : 'Start Game',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
                                 ),
-                              ),
+                                ElevatedButton(
+                                  onPressed: _showStats,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade600,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Stats',
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 16),
+                            TextButton(
+                              onPressed: _clearData,
                               child: Text(
-                                gameOver ? 'Play Again' : 'Start Game',
-                                style: TextStyle(fontSize: 18),
+                                'Clear Data',
+                                style: TextStyle(color: Colors.red),
                               ),
                             ),
                           ],

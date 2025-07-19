@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'game_models.dart';
+part of 'main.dart';
 
 // **************************************************************************
 // TypeAdapterGenerator
@@ -62,7 +62,7 @@ class UserDataAdapter extends TypeAdapter<UserData> {
       totalGamesPlayed: fields[2] as int,
       totalScore: fields[3] as int,
       lastPlayDate: fields[4] as DateTime,
-      achievements: List<String>.from(fields[5] as List),
+      achievements: (fields[5] as List).cast<String>(),
     );
   }
 
@@ -134,49 +134,6 @@ class GameSettingsAdapter extends TypeAdapter<GameSettings> {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is GameSettingsAdapter &&
-          runtimeType == other.runtimeType &&
-          typeId == other.typeId;
-}
-
-class GameCacheAdapter extends TypeAdapter<GameCache> {
-  @override
-  final int typeId = 3;
-
-  @override
-  GameCache read(BinaryReader reader) {
-    final numOfFields = reader.readByte();
-    final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
-    };
-    return GameCache(
-      screenWidth: fields[0] as double,
-      screenHeight: fields[1] as double,
-      lastSession: fields[2] as DateTime,
-      additionalData: Map<String, dynamic>.from(fields[3] as Map),
-    );
-  }
-
-  @override
-  void write(BinaryWriter writer, GameCache obj) {
-    writer
-      ..writeByte(4)
-      ..writeByte(0)
-      ..write(obj.screenWidth)
-      ..writeByte(1)
-      ..write(obj.screenHeight)
-      ..writeByte(2)
-      ..write(obj.lastSession)
-      ..writeByte(3)
-      ..write(obj.additionalData);
-  }
-
-  @override
-  int get hashCode => typeId.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is GameCacheAdapter &&
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }

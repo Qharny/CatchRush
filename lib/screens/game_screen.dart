@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:catchrush/services/cache_service.dart';
 import 'package:flutter/material.dart';
 
 import '../models/game_models.dart';
@@ -24,6 +25,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   int lives = 3;
   bool gameActive = false;
   bool gameOver = false;
+  bool gamePaused = false;
   int level = 1;
 
   // User data
@@ -61,6 +63,29 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void _initializeData() {
     currentUser = DataService.getOrCreateUserData();
     gameSettings = DataService.getOrCreateGameSettings();
+
+    // Load cached data if available
+    _loadCachedData();
+  }
+
+  void _loadCachedData() {
+    // Load cached basket position
+    final basketPosition = CacheService.getBasketPosition();
+    if (basketPosition != null) {
+      // We'll set these after screen dimensions are available in _initializeGame()
+    }
+
+    // Load cached game state if needed
+    final gameState = CacheService.getGameState();
+    if (gameState != null) {
+      // You can restore game state here if implementing save/load functionality
+    }
+
+    // Load user preferences
+    final preferences = CacheService.getUserPreferences();
+    if (preferences != null) {
+      // Apply user preferences here
+    }
   }
 
   void _initializeGame() {
@@ -68,14 +93,27 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     screenWidth = renderBox.size.width;
     screenHeight = renderBox.size.height;
 
-    // Initialize basket position
-    basketX = screenWidth / 2 - GameLogicService.basketWidth / 2;
-    basketY = screenHeight - GameLogicService.basketHeight - 100;
+    // Try to load cached basket position
+    final basketPosition = CacheService.getBasketPosition();
+    if (basketPosition != null) {
+      basketX = basketPosition['x']!;
+      basketY = basketPosition['y']!;
+    } else {
+      // Initialize basket position to center
+      basketX = screenWidth / 2 - GameLogicService.basketWidth / 2;
+      basketY = screenHeight - GameLogicService.basketHeight - 100;
+    }
 
-    // Cache screen dimensions
-    DataService.cacheBox.put('screen_width', screenWidth);
-    DataService.cacheBox.put('screen_height', screenHeight);
-    DataService.cacheBox.put('last_session', DateTime.now().toIso8601String());
+    // Save screen dimensions to cache
+    DataService.saveCache(
+      screenWidth,
+      screenHeight,
+      additionalData: {
+        'basket_x': basketX,
+        'basket_y': basketY,
+        'last_session': DateTime.now().toIso8601String(),
+      },
+    );
 
     setState(() {});
   }
@@ -87,6 +125,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       level = 1;
       gameActive = true;
       gameOver = false;
+      gamePaused = false;
       objectActive = false;
     });
 
@@ -103,7 +142,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _updateGame() {
-    if (!objectActive) return;
+    if (!objectActive || gamePaused) return;
 
     setState(() {
       // Move object down (speed increases with level)
@@ -251,10 +290,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         screenWidth,
       );
     });
+
+    // Update cache with new basket position
+    CacheService.saveBasketPosition(basketX, basketY);
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    if (gameActive) {
+    if (gameActive && !gamePaused) {
       _moveBasket(details.delta.dx);
     }
   }
@@ -267,7 +309,82 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _clearData() {
-    showDialog(context: context, builder: (context) => ClearDataDialog());
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Clear All Data'),
+        content: Text(
+          'Are you sure you want to clear all game data and cache? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              DataService.clearAllData();
+              CacheService.clearAllCache();
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('All data and cache cleared!')),
+              );
+            },
+            child: Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _pauseGame() {
+    setState(() {
+      gamePaused = true;
+    });
+  }
+
+  void _resumeGame() {
+    setState(() {
+      gamePaused = false;
+    });
+  }
+
+  void _showMenu() {
+    if (gameActive && !gameOver) {
+      // Show pause menu when game is active
+      _showPauseMenu();
+    } else {
+      // Show stats when game is not active
+      _showStats();
+    }
+  }
+
+  void _showPauseMenu() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PauseMenuDialog(
+        onResume: () {
+          Navigator.pop(context);
+          _resumeGame();
+        },
+        onShowStats: () {
+          Navigator.pop(context);
+          _showStats();
+        },
+        onRestart: () {
+          Navigator.pop(context);
+          _startGame();
+        },
+        onQuit: () {
+          Navigator.pop(context);
+          setState(() {
+            gameActive = false;
+            gamePaused = false;
+          });
+        },
+      ),
+    );
   }
 
   @override
@@ -323,7 +440,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   top: 20,
                   right: 20,
                   child: IconButton(
-                    onPressed: _showStats,
+                    onPressed: _showMenu,
                     icon: Icon(Icons.menu, color: Colors.white),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.blue.shade600,
@@ -360,15 +477,64 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       children: [
                         ControlButton(
                           icon: Icons.arrow_left,
-                          onTap: () => _moveBasket(-30),
-                          onTapDown: () => _moveBasket(-15),
+                          onTap: () => gamePaused ? null : _moveBasket(-30),
+                          onTapDown: () => gamePaused ? null : _moveBasket(-15),
                         ),
                         ControlButton(
                           icon: Icons.arrow_right,
-                          onTap: () => _moveBasket(30),
-                          onTapDown: () => _moveBasket(15),
+                          onTap: () => gamePaused ? null : _moveBasket(30),
+                          onTapDown: () => gamePaused ? null : _moveBasket(15),
                         ),
                       ],
+                    ),
+                  ),
+
+                // Pause Overlay
+                if (gamePaused && gameActive)
+                  Container(
+                    color: Colors.black54,
+                    child: Center(
+                      child: Container(
+                        padding: EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black26,
+                              blurRadius: 8,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.pause_circle_outline,
+                              size: 48,
+                              color: Colors.blue.shade600,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'PAUSED',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Tap menu to resume',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
 

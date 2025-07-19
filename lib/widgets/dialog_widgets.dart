@@ -270,3 +270,130 @@ class StartGameDialog extends StatelessWidget {
     );
   }
 }
+
+class PauseMenuDialog extends StatelessWidget {
+  final VoidCallback onResume;
+  final VoidCallback onShowStats;
+  final VoidCallback onRestart;
+  final VoidCallback onQuit;
+
+  const PauseMenuDialog({
+    super.key,
+    required this.onResume,
+    required this.onShowStats,
+    required this.onRestart,
+    required this.onQuit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          padding: EdgeInsets.all(32),
+          margin: EdgeInsets.symmetric(horizontal: 32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 8,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.pause_circle_outline,
+                size: 48,
+                color: Colors.blue.shade600,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Game Paused',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 24),
+              Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: onResume,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Resume Game', style: TextStyle(fontSize: 16)),
+                  ),
+                  SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: onShowStats,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade600,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Statistics', style: TextStyle(fontSize: 16)),
+                  ),
+                  SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: onRestart,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade600,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Restart Game', style: TextStyle(fontSize: 16)),
+                  ),
+                  SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: onQuit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text('Quit Game', style: TextStyle(fontSize: 16)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

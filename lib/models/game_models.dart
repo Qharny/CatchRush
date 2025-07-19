@@ -1,29 +1,39 @@
-class GameScore {
+import 'package:hive_flutter/hive_flutter.dart';
+
+part 'game_models.g.dart';
+
+@HiveType(typeId: 0)
+class GameScore extends HiveObject {
+  @HiveField(0)
   final int score;
+
+  @HiveField(1)
   final DateTime date;
+
+  @HiveField(2)
   final int level;
 
   GameScore({required this.score, required this.date, required this.level});
-
-  Map<String, dynamic> toJson() {
-    return {'score': score, 'date': date.toIso8601String(), 'level': level};
-  }
-
-  factory GameScore.fromJson(Map<String, dynamic> json) {
-    return GameScore(
-      score: json['score'],
-      date: DateTime.parse(json['date']),
-      level: json['level'],
-    );
-  }
 }
 
-class UserData {
+@HiveType(typeId: 1)
+class UserData extends HiveObject {
+  @HiveField(0)
   String playerName;
+
+  @HiveField(1)
   int highScore;
+
+  @HiveField(2)
   int totalGamesPlayed;
+
+  @HiveField(3)
   int totalScore;
+
+  @HiveField(4)
   DateTime lastPlayDate;
+
+  @HiveField(5)
   List<String> achievements;
 
   UserData({
@@ -34,34 +44,20 @@ class UserData {
     required this.lastPlayDate,
     required this.achievements,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'playerName': playerName,
-      'highScore': highScore,
-      'totalGamesPlayed': totalGamesPlayed,
-      'totalScore': totalScore,
-      'lastPlayDate': lastPlayDate.toIso8601String(),
-      'achievements': achievements,
-    };
-  }
-
-  factory UserData.fromJson(Map<String, dynamic> json) {
-    return UserData(
-      playerName: json['playerName'],
-      highScore: json['highScore'],
-      totalGamesPlayed: json['totalGamesPlayed'],
-      totalScore: json['totalScore'],
-      lastPlayDate: DateTime.parse(json['lastPlayDate']),
-      achievements: List<String>.from(json['achievements']),
-    );
-  }
 }
 
-class GameSettings {
+@HiveType(typeId: 2)
+class GameSettings extends HiveObject {
+  @HiveField(0)
   bool soundEnabled;
+
+  @HiveField(1)
   bool vibrationEnabled;
+
+  @HiveField(2)
   double gameSpeed;
+
+  @HiveField(3)
   String theme;
 
   GameSettings({
@@ -70,22 +66,26 @@ class GameSettings {
     required this.gameSpeed,
     required this.theme,
   });
+}
 
-  Map<String, dynamic> toJson() {
-    return {
-      'soundEnabled': soundEnabled,
-      'vibrationEnabled': vibrationEnabled,
-      'gameSpeed': gameSpeed,
-      'theme': theme,
-    };
-  }
+@HiveType(typeId: 3)
+class GameCache extends HiveObject {
+  @HiveField(0)
+  double screenWidth;
 
-  factory GameSettings.fromJson(Map<String, dynamic> json) {
-    return GameSettings(
-      soundEnabled: json['soundEnabled'],
-      vibrationEnabled: json['vibrationEnabled'],
-      gameSpeed: json['gameSpeed'],
-      theme: json['theme'],
-    );
-  }
+  @HiveField(1)
+  double screenHeight;
+
+  @HiveField(2)
+  DateTime lastSession;
+
+  @HiveField(3)
+  Map<String, dynamic> additionalData;
+
+  GameCache({
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.lastSession,
+    required this.additionalData,
+  });
 }

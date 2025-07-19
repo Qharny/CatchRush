@@ -1,4 +1,5 @@
 # catchrush
+![Visitor Count](https://visitor-badge.laobi.icu/badge?page_id=qharny.CatchRush)
 
 A new Flutter project.
 
